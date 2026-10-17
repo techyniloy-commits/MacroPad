@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import java.net.Inet4Address
@@ -26,6 +27,7 @@ class MainActivity : AppCompatActivity() {
 
         requestNotificationPermission()
         requestBatteryException()
+        ensureMediaAccess()
 
         val tvIp = findViewById<TextView>(R.id.tvIp)
         val btnToggle = findViewById<Button>(R.id.btnToggle)
@@ -66,6 +68,16 @@ class MainActivity : AppCompatActivity() {
                     startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
                 } catch (e: Exception) { }
             }
+        }
+    }
+
+    private fun ensureMediaAccess() {
+        val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")?.contains(packageName) == true
+        if (!enabled) {
+            Toast.makeText(this, "Media control-এর জন্য MacroPad-কে Notification access দিন", Toast.LENGTH_LONG).show()
+            try {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } catch (e: Exception) { }
         }
     }
 

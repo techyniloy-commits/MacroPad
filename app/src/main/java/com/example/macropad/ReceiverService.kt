@@ -74,6 +74,17 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val restart = Intent(applicationContext, ReceiverService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            applicationContext.startForegroundService(restart)
+        } else {
+            applicationContext.startService(restart)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
+    @Suppress("DEPRECATION")
     private fun acquireLocks() {
         if (wakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -86,7 +97,7 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
         if (screenWakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             screenWakeLock = pm.newWakeLock(
-                PowerManager.SCREEN_DIM_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
                 "MacroPad::ScreenWake"
             )
         }
@@ -117,6 +128,7 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
         }.start()
     }
 
+    @Suppress("DEPRECATION")
     private fun handleCommand(command: String?): String {
         try {
             when {
@@ -129,21 +141,29 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
                 }
                 command == "VOL_UP" -> audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
                 command == "VOL_DOWN" -> audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
-                command == "PLAY_PAUSE" -> sendMediaButton(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-                command == "NEXT_TRACK" -> sendMediaButton(KeyEvent.KEYCODE_MEDIA_NEXT)
-                command == "PREV_TRACK" -> sendMediaButton(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
-                command == "SCREEN_ON" -> {
-                    mainHandler.post {
-                        screenWakeLock?.acquire(3000)
-                        mainHandler.postDelayed({ screenWakeLock?.release() }, 3000)
+                command == "PLAY_PAUSE" -> {
+                    if (MediaControlService.instance?.playPause() != true) {
+                        sendMediaButton(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
                     }
+                }
+                command == "NEXT_TRACK" -> {
+                    if (MediaControlService.instance?.next() != true) {
+                        sendMediaButton(KeyEvent.KEYCODE_MEDIA_NEXT)
+                    }
+                }
+                command == "PREV_TRACK" -> {
+                    if (MediaControlService.instance?.prev() != true) {
+                        sendMediaButton(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+                    }
+                }
+                command == "SCREEN_ON" -> {
+                    mainHandler.post { screenWakeLock?.acquire(5000) }
                 }
                 command == "VIBRATE" -> {
                     val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
                     } else {
-                        @Suppress("DEPRECATION")
                         vibrator.vibrate(500)
                     }
                 }
@@ -166,35 +186,39 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun sendMediaButton(keyCode: Int) {
-        val event = KeyEvent(KeyEvent.ACTION_DOWN, keyCode)
-        audioManager.dispatchMediaKeyEvent(event)
-        val eventUp = KeyEvent(KeyEvent.ACTION_UP, keyCode)
-        audioManager.dispatchMediaKeyEvent(eventUp)
+        audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
     }
 
     private fun launchApp(command: String) {
-        val packageName = when (command) {
-            "APP_YOUTUBE" -> "com.google.android.youtube"
-            "APP_WHATSAPP" -> "com.whatsapp"
+        when (command) {
             "APP_CAMERA" -> {
                 val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
                 return
             }
-            "APP_CHROME" -> "com.android.chrome"
-            "APP_MAPS" -> "com.google.android.apps.maps"
             "APP_PHONE" -> {
                 val intent = Intent(Intent.ACTION_DIAL)
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
                 return
             }
+        }
+        val packageName = when (command) {
+            "APP_YOUTUBE" -> "com.google.android.youtube"
+            "APP_WHATSAPP" -> "com.whatsapp"
+            "APP_CHROME" -> "com.android.chrome"
+            "APP_MAPS" -> "com.google.android.apps.maps"
             else -> return
         }
         val intent = packageManager.getLaunchIntentForPackage(packageName)
-        intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        intent?.let { startActivity(it) } ?: showToast("App not found")
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } else {
+            showToast("App not found: $packageName")
+        }
     }
 
     private fun showToast(message: String) {
