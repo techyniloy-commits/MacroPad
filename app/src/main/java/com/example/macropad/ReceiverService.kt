@@ -195,6 +195,11 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
                         vibrator.vibrate(500)
                     }
                 }
+                command == "SHOT" -> {
+                    val jpeg = ScreenCaptureService.latestJpeg
+                    if (jpeg == null) return "NOFRAME"
+                    return "SHOT:" + ScreenCaptureService.frameW + ":" + ScreenCaptureService.frameH + ":" + android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP)
+                }
                 command == "BATTERY" -> {
                     val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
                     val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)

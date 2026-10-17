@@ -30,6 +30,12 @@ class MainActivity : AppCompatActivity() {
         ensureMediaAccess()
         ensureOverlay()
 
+findViewById<Button>(R.id.btnShare).setOnClickListener {
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            @Suppress("DEPRECATION")
+            startActivityForResult(mpm.createScreenCaptureIntent(), 10)
+        }
+
         val tvIp = findViewById<TextView>(R.id.tvIp)
         val btnToggle = findViewById<Button>(R.id.btnToggle)
 
@@ -54,6 +60,21 @@ class MainActivity : AppCompatActivity() {
                 }
                 btnToggle.text = "Start Receiver"
                 isServiceRunning = false
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 10 && resultCode == RESULT_OK && data != null) {
+            val i = Intent(this, ScreenCaptureService::class.java)
+            i.putExtra("code", resultCode)
+            i.putExtra("data", data)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(i)
+            } else {
+                startService(i)
             }
         }
     }
