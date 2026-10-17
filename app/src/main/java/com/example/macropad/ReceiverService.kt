@@ -15,13 +15,13 @@ class ReceiverService : Service() {
 
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createNotificationChannel()
-        val notification = createNotification()
-        startForeground(1, notification)
+        startForeground(1, createNotification())
 
         if (!isRunning) {
             isRunning = true
@@ -35,27 +35,29 @@ class ReceiverService : Service() {
             try {
                 serverSocket = ServerSocket(8080)
                 showToast("Server Started on Port 8080")
-                
+
                 while (isRunning) {
-                    val client = serverSocket?.accept()
-                    val reader = BufferedReader(InputStreamReader(client?.getInputStream()))
-                    val command = reader.readLine()
-                    
-                    Handler(Looper.getMainLooper()).post {
+                    try {
+                        val client = serverSocket?.accept() ?: break
+                        val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+                        val command = reader.readLine()
                         showToast("Command Received: $command")
+                        client.getOutputStream().write("OK\n".toByteArray())
+                        client.close()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                    
-                    client?.getOutputStream()?.write("OK\n".toByteArray())
-                    client?.close()
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                showToast("Server Error: ${e.message}")
             }
         }.start()
     }
 
     private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        mainHandler.post {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun createNotificationChannel() {
