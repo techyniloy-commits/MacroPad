@@ -36,9 +36,9 @@ class ScreenCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannel()
         startForeground(2, buildNotification())
-        val resultCode = intent.getIntExtra("code", -1)
+        val resultCode = intent?.getIntExtra("code", -1) ?: -1
         @Suppress("DEPRECATION")
-        val data = intent.getParcelableExtra<Intent>("data")
+        val data = intent?.getParcelableExtra<Intent>("data")
         if (resultCode != -1 && data != null) startCapture(resultCode, data)
         return START_STICKY
     }
