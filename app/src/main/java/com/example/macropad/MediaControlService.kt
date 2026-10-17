@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.service.notification.NotificationListenerService
 
 class MediaControlService : NotificationListenerService() {
@@ -23,13 +24,31 @@ class MediaControlService : NotificationListenerService() {
         instance = null
     }
 
-    private fun firstTransport(): MediaController.TransportControls? {
+    private fun firstSession(): MediaController? {
         val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
-        val sessions = msm.getActiveSessions(ComponentName(this, MediaControlService::class.java))
-        return sessions.firstOrNull()?.transportControls
+        return msm.getActiveSessions(ComponentName(this, MediaControlService::class.java)).firstOrNull()
     }
 
-    fun playPause(): Boolean = firstTransport()?.let { it.playPause(); true } ?: false
-    fun next(): Boolean = firstTransport()?.let { it.skipToNext(); true } ?: false
-    fun prev(): Boolean = firstTransport()?.let { it.skipToPrevious(); true } ?: false
+    fun playPause(): Boolean {
+        val session = firstSession() ?: return false
+        val tc = session.transportControls ?: return false
+        if (session.playbackState?.state == PlaybackState.STATE_PLAYING) {
+            tc.pause()
+        } else {
+            tc.play()
+        }
+        return true
+    }
+
+    fun next(): Boolean {
+        val tc = firstSession()?.transportControls ?: return false
+        tc.skipToNext()
+        return true
+    }
+
+    fun prev(): Boolean {
+        val tc = firstSession()?.transportControls ?: return false
+        tc.skipToPrevious()
+        return true
+    }
 }
