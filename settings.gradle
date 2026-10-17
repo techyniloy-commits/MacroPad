@@ -6,11 +6,7 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-    repositories {
-        google()
-        mavenCentral()
-    }
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
 }
 rootProject.name = "MacroPad"
 include ':app'
