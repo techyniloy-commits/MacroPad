@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
         requestNotificationPermission()
         requestBatteryException()
         ensureMediaAccess()
+        ensureOverlay()
 
         val tvIp = findViewById<TextView>(R.id.tvIp)
         val btnToggle = findViewById<Button>(R.id.btnToggle)
@@ -45,7 +46,12 @@ class MainActivity : AppCompatActivity() {
                 btnToggle.text = "Stop Receiver"
                 isServiceRunning = true
             } else {
-                stopService(intent)
+                intent.action = "STOP"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
                 btnToggle.text = "Start Receiver"
                 isServiceRunning = false
             }
@@ -77,6 +83,15 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Media control-এর জন্য MacroPad-কে Notification access দিন", Toast.LENGTH_LONG).show()
             try {
                 startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            } catch (e: Exception) { }
+        }
+    }
+
+    private fun ensureOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "Background app launch-এর জন্য Overlay permission দিন", Toast.LENGTH_LONG).show()
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             } catch (e: Exception) { }
         }
     }

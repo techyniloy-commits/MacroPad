@@ -22,12 +22,14 @@ import android.widget.Toast
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.ServerSocket
+import java.net.Socket
 import java.util.Locale
 
 class ReceiverService : Service(), TextToSpeech.OnInitListener {
 
     private var serverSocket: ServerSocket? = null
-    private var isRunning = false
+    @Volatile private var isRunning = false
+    @Volatile private var userStopped = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var cameraManager: CameraManager
     private lateinit var audioManager: AudioManager
@@ -63,6 +65,15 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
 
     @Suppress("DEPRECATION")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "STOP") {
+            userStopped = true
+            isRunning = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        userStopped = false
         createNotificationChannel()
         startForeground(1, createNotification())
         acquireLocks()
@@ -75,11 +86,13 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val restart = Intent(applicationContext, ReceiverService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            applicationContext.startForegroundService(restart)
-        } else {
-            applicationContext.startService(restart)
+        if (!userStopped) {
+            val restart = Intent(applicationContext, ReceiverService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(restart)
+            } else {
+                applicationContext.startService(restart)
+            }
         }
         super.onTaskRemoved(rootIntent)
     }
@@ -105,25 +118,40 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
 
     private fun startServer() {
         Thread {
-            try {
-                serverSocket = ServerSocket(8080)
-                showToast("Server Started on Port 8080")
-
-                while (isRunning) {
-                    try {
+            // ওয়াচডগ: সার্ভার যেন কখনো মরে না থাকে
+            while (isRunning) {
+                try {
+                    serverSocket = ServerSocket(8080)
+                    showToast("Server Started on Port 8080")
+                    while (isRunning) {
                         val client = serverSocket?.accept() ?: break
-                        val reader = BufferedReader(InputStreamReader(client.getInputStream()))
-                        val command = reader.readLine()
-                        showToast("Command: $command")
-                        val response = handleCommand(command)
-                        client.getOutputStream().write((response + "\n").toByteArray())
-                        client.close()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                        handleClient(client)
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    try { serverSocket?.close() } catch (e: Exception) { }
+                }
+                if (isRunning) Thread.sleep(1000)
+            }
+        }.start()
+    }
+
+    // প্রতিটি কানেকশন আলাদা থ্রেডে — একটি আটকালে বাকিগুলো ঠিক থাকবে
+    private fun handleClient(client: Socket) {
+        Thread {
+            try {
+                client.soTimeout = 3000
+                val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+                val command = reader.readLine()
+                if (command != null) {
+                    showToast("Command: $command")
+                    val response = handleCommand(command)
+                    client.getOutputStream().write((response + "\n").toByteArray())
                 }
             } catch (e: Exception) {
-                showToast("Server Error: ${e.message}")
+            } finally {
+                try { client.close() } catch (e: Exception) { }
             }
         }.start()
     }
@@ -248,11 +276,23 @@ class ReceiverService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         isRunning = false
-        serverSocket?.close()
+        try { serverSocket?.close() } catch (e: Exception) { }
         wakeLock?.let { if (it.isHeld) it.release() }
         wifiLock?.let { if (it.isHeld) it.release() }
         tts?.shutdown()
+
+        // সিস্টেম মেরে ফেললে নিজে নিজে উঠে দাঁড়াবে
+        if (!userStopped) {
+            try {
+                val i = Intent(applicationContext, ReceiverService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    applicationContext.startForegroundService(i)
+                } else {
+                    applicationContext.startService(i)
+                }
+            } catch (e: Exception) { }
+        }
+        super.onDestroy()
     }
 }
